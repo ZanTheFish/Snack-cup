@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snack Cup 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+  html { color-scheme: light; }
+  body { margin: 0; }
+  /* Layout: one column. Header, a square-ish 3D stage, then a control panel under it. */
+  :root {
+    --bg: #f3f1ee;
+    --fg: #1d1b19;
+    --muted: #6b655e;
+    --surface: #ffffff;
+    --line: #dcd7d0;
+    --accent: #c4621a;
+    --accent-fg: #ffffff;
+    --stage: #e7e3dd;
+    --warn: #a23b1c;
+    --font-display: "Space Grotesk", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16191c; --fg: #ecebe8; --muted: #9a958e; --surface: #1f2327; --line: #343a40;
+      --accent: #f0914a; --accent-fg: #1a1208; --stage: #20252a; --warn: #f09a7d;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16191c; --fg: #ecebe8; --muted: #9a958e; --surface: #1f2327; --line: #343a40;
+    --accent: #f0914a; --accent-fg: #1a1208; --stage: #20252a; --warn: #f09a7d;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+    padding-block: 20px 32px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.15; margin: 0; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 4px 0 0; max-width: 60ch; }
+  .stage {
+    position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px;
+    height: min(62vh, 520px); min-height: 320px; overflow: hidden;
+  }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .hint {
+    position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--muted);
+    background: color-mix(in srgb, var(--stage) 80%, transparent); padding: 2px 8px; border-radius: 6px;
+  }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+  .ctl { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  label { font-weight: 600; }
+  .val { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; margin: 0; }
+  .note { font-size: 13px; color: var(--muted); margin: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; padding: 10px 16px; min-height: 44px;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #status { min-height: 1.5em; font-size: 14px; color: var(--warn); margin: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); margin: 0; padding: 0; list-style: none; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Snack Cup 3D</h1>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="c" aria-label="3D model of the snack cup"></canvas>
+    <span class="hint">Drag to rotate · pinch to zoom · two fingers to pan</span>
+  </div>
+
+  <section class="panel" aria-label="Controls">
+    <div class="ctl">
+      <div class="row"><label for="swing">Drink cup swing</label><span class="val" id="swingv">0°</span></div>
+      <input type="range" id="swing" min="0" max="150" step="1" value="0">
+    </div>
+    <div class="ctl">
+      <div class="row"><label for="lid">Snack lid</label><span class="val" id="lidv">0% open</span></div>
+      <input type="range" id="lid" min="0" max="100" step="1" value="0">
+      <p class="note">The lid only opens once the drink cup is swung out past 135°, and the drink cup can't swing back over an open lid.</p>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <div class="btns">
+      <button class="primary" id="openAll" type="button">Open all</button>
+      <button id="closeAll" type="button">Close all</button>
+      <button id="resetView" type="button">Reset view</button>
+    </div>
+    <ul class="legend">
+      <li><i style="background:#2f7f9f"></i>Drink cup and lid</li>
+      <li><i style="background:#e08a3c"></i>Snack cup</li>
+      <li><i style="background:#c9742a"></i>Fixed half lid</li>
+      <li><i style="background:#a85d18"></i>Sliding half lid</li>
+    </ul>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  var R = 2, t = 0.15, H1 = 4, H2 = 4.5, CLEAR = 135, MAXSWING = 150;
+  var FT = 0.2, MT = 0.1, RL = R - 0.02, TOPY = H1 + FT, S = H1 + 0.1, HX = -(R + 0.2);
+
+  var canvas = document.getElementById('c');
+  var stage = document.getElementById('stage');
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  renderer.setClearColor(0x000000, 0);
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  var HOME_POS = new THREE.Vector3(9, 9.5, 17), HOME_TGT = new THREE.Vector3(-0.8, 4.3, 0);
+  camera.position.copy(HOME_POS);
+  var controls = new THREE.OrbitControls(camera, canvas);
+  controls.target.copy(HOME_TGT);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 8;
+  controls.maxDistance = 40;
+  controls.update();
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f96, 0.85));
+  var sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(6, 12, 8); scene.add(sun);
+  var fill = new THREE.DirectionalLight(0xffffff, 0.3); fill.position.set(-8, 4, -6); scene.add(fill);
+
+  function mat(c, metal, rough) {
+    return new THREE.MeshStandardMaterial({ color: c, metalness: metal || 0, roughness: rough == null ? 0.6 : rough, side: THREE.DoubleSide });
+  }
+  function lathe(pts, c, metal, rough) {
+    var v = pts.map(function (p) { return new THREE.Vector2(p[0], p[1]); });
+    return new THREE.Mesh(new THREE.LatheGeometry(v, 72), mat(c, metal, rough));
+  }
+  function cup(h, c) { return lathe([[0, 0], [R, 0], [R, h], [R - t, h], [R - t, t], [0, t]], c); }
+  function tube(r0, r1, y0, y1, c) { return lathe([[r0, y0], [r1, y0], [r1, y1], [r0, y1], [r0, y0]], c); }
+  // Shapes are drawn in x/y. After the rotation, shape y becomes world -z, and depth goes up.
+  function ext(shape, depth, c) {
+    var g = new THREE.ExtrudeGeometry(shape, { depth: depth, bevelEnabled: false, curveSegments: 48 });
+    g.rotateX(-Math.PI / 2);
+    return new THREE.Mesh(g, mat(c));
+  }
+  function half(a0, a1) {
+    var s = new THREE.Shape(); s.moveTo(0, 0); s.absarc(0, 0, RL, a0, a1, false); s.closePath(); return s;
+  }
+
+  var model = new THREE.Group(); scene.add(model);
+
+  // Snack cup, band and candies
+  var base = cup(H1, 0xe08a3c); model.add(base);
+  var band = tube(R, R + 0.04, H1 - 0.14, H1, 0x3b3b3b); model.add(band);
+  var candyCols = [0xd7263d, 0xf6c445, 0x3aa655, 0x2a7fd4, 0xe87bb0], n = 0;
+  var sg = new THREE.SphereGeometry(0.3, 20, 14);
+  for (var k = 0; k < 6; k++) {
+    for (var i = -1; i <= 1; i += 2) for (var j = -1; j <= 1; j += 2) {
+      var odd = k % 2, m = new THREE.Mesh(sg, mat(candyCols[n % 5], 0, 0.35)); n++;
+      m.position.set(0.75 + i * 0.4 + (odd ? 0.2 : 0), t + 0.3 + k * 0.55, j * 0.45 + (odd ? -0.2 : 0));
+      model.add(m);
+    }
+  }
+
+  // Snack lid: ledge ring, fixed half and the sliding half
+  var ringShape = new THREE.Shape(); ringShape.absarc(0, 0, RL, 0, Math.PI * 2, false);
+  var ringHole = new THREE.Path(); ringHole.absarc(0, 0, 1.7, 0, Math.PI * 2, true); ringShape.holes.push(ringHole);
+  var ring = ext(ringShape, MT, 0x3b3b3b); ring.position.y = H1; model.add(ring);
+  var F = ext(half(Math.PI / 2, Math.PI * 1.5), FT, 0xc9742a); F.position.y = H1; model.add(F);
+
+  var Mgroup = new THREE.Group(); model.add(Mgroup);
+  Mgroup.add(ext(half(-Math.PI / 2, Math.PI / 2), MT, 0xa85d18));
+  var tab = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, MT, 32), mat(0xa85d18));
+  tab.position.set(0.3, MT / 2, 2.15); Mgroup.add(tab);
+
+  // Hinge: lower half stays, upper half rides with the drink cup
+  var METAL = 0xb8bcc2;
+  function knuckle(y) { var m = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.05, 32), mat(METAL, 0.7, 0.3)); m.position.set(0, y, 0); return m; }
+  function leaf(y) { var m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.05, 0.5), mat(METAL, 0.7, 0.3)); m.position.set(0.15, y, 0); return m; }
+  var lower = new THREE.Group(); lower.position.set(HX, 0, 0);
+  var lk = knuckle(S - 0.575), ll = leaf(S - 0.575); lower.add(lk, ll); model.add(lower);
+  var pin = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 24), mat(METAL, 0.7, 0.3));
+  pin.position.set(HX, S, 0); model.add(pin);
+
+  // Swinging group: pivot on the hinge axis
+  var pivot = new THREE.Group(); pivot.position.set(HX, 0, 0); model.add(pivot);
+  pivot.add(knuckle(S + 0.575)); pivot.add(leaf(S + 0.575));
+  var top = new THREE.Group(); top.position.set(R + 0.2, 0, 0); pivot.add(top);
+  var topCup = cup(H2, 0x2f7f9f); topCup.position.y = TOPY; top.add(topCup);
+  var plate = new THREE.Shape(); plate.absarc(0, 0, R, 0, Math.PI * 2, false);
+  var sip = new THREE.Path(); sip.absarc(0, -1.05, 0.3, 0, Math.PI * 2, true); plate.holes.push(sip);
+  var lidPlate = ext(plate, 0.12, 0x1f5f78); lidPlate.position.y = TOPY + H2; top.add(lidPlate);
+  top.add(tube(R, R + 0.03, TOPY + H2 - 0.18, TOPY + H2 + 0.12, 0x1f5f78));
+  var spout = tube(0.3, 0.42, 0, 0.2, 0x1f5f78); spout.position.set(0, TOPY + H2 + 0.12, 1.05); top.add(spout);
+
+  // State
+  var swing = 0, lid = 0, mode = null;
+  var swingEl = document.getElementById('swing'), lidEl = document.getElementById('lid');
+  var swingV = document.getElementById('swingv'), lidV = document.getElementById('lidv');
+  var statusEl = document.getElementById('status');
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function apply() {
+    pivot.rotation.y = swing * Math.PI / 180;
+    var a = lid * 180;
+    Mgroup.rotation.y = a * Math.PI / 180;
+    Mgroup.position.y = H1 + MT + 0.1 * Math.min(1, a / 12);
+    swingEl.value = Math.round(swing); lidEl.value = Math.round(lid * 100);
+    swingV.textContent = Math.round(swing) + '°';
+    lidV.textContent = Math.round(lid * 100) + '% open';
+  }
+  function say(msg) { statusEl.textContent = msg || ''; }
+
+  swingEl.addEventListener('input', function () {
+    mode = null; var v = +swingEl.value; say('');
+    if (lid > 0.001 && v < CLEAR) { v = CLEAR; say('Close the snack lid before swinging the drink cup back over it.'); }
+    swing = v; apply();
+  });
+  lidEl.addEventListener('input', function () {
+    mode = null; var v = +lidEl.value / 100; say('');
+    if (swing < CLEAR && v > 0) { v = 0; say('Swing the drink cup out past 135° first so the lid has room to open.'); }
+    lid = v; apply();
+  });
+  document.getElementById('openAll').addEventListener('click', function () { mode = 'open'; say(''); });
+  document.getElementById('closeAll').addEventListener('click', function () { mode = 'close'; say(''); });
+  document.getElementById('resetView').addEventListener('click', function () {
+    camera.position.copy(HOME_POS); controls.target.copy(HOME_TGT); controls.update();
+  });
+
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    // Keep the whole model in frame on narrow screens
+    camera.fov = w < h ? 52 : 38;
+    camera.updateProjectionMatrix();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage); else window.addEventListener('resize', resize);
+  resize();
+
+  var last = performance.now();
+  function tick(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    var sv = reduce ? 1000 : 90, lv = reduce ? 100 : 0.6;
+    if (mode === 'open') {
+      if (swing < MAXSWING) swing = Math.min(MAXSWING, swing + dt * sv);
+      if (swing >= CLEAR) lid = Math.min(1, lid + dt * lv);
+      if (swing >= MAXSWING && lid >= 1) mode = null;
+      apply();
+    } else if (mode === 'close') {
+      if (lid > 0) lid = Math.max(0, lid - dt * lv);
+      else swing = Math.max(0, swing - dt * sv);
+      if (lid <= 0 && swing <= 0) mode = null;
+      apply();
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  apply();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
